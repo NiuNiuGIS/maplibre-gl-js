@@ -1,4 +1,3 @@
-import assert from 'assert';
 import DOM from '../../util/dom';
 
 import {ease as _ease, bindAll, bezier} from '../../util/util';
@@ -21,6 +20,16 @@ const wheelZoomRate = 1 / 450;
 // upper bound on how much we scale the map in any single render frame; this
 // is used to limit zoom rate in the case of very fast scrolling
 const maxScalePerFrame = 2;
+
+/**
+ * The scroll zoom hanlder options object
+ */
+export type ScrollZoomHandlerOptions = {
+    /**
+     * If "center" is passed, map will zoom around the center of map
+     */
+    around?: 'center';
+};
 
 /**
  * The `ScrollZoomHandler` allows the user to zoom the map by scrolling.
@@ -121,15 +130,15 @@ class ScrollZoomHandler {
     /**
      * Enables the "scroll to zoom" interaction.
      *
-     * @param {Object} [options] Options object.
-     * @param {string} [options.around] If "center" is passed, map will zoom around center of map
+     * @param {ScrollZoomHandlerOptions} [options] Options object.
+     * @param {string} [options.around] If "center" is passed, map will zoom around the center of map
      *
      * @example
      *   map.scrollZoom.enable();
      * @example
      *  map.scrollZoom.enable({ around: 'center' })
      */
-    enable(options?: any) {
+    enable(options?: ScrollZoomHandlerOptions) {
         if (this.isEnabled()) return;
         this._enabled = true;
         this._aroundCenter = options && options.around === 'center';
@@ -148,6 +157,13 @@ class ScrollZoomHandler {
 
     wheel(e: WheelEvent) {
         if (!this.isEnabled()) return;
+        if (this._map._cooperativeGestures) {
+            if (this._map._metaPress) {
+                e.preventDefault();
+            } else {
+                return;
+            }
+        }
         let value = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 40 : e.deltaY;
         const now = browser.now(),
             timeDelta = now - (this._lastWheelEventTime || 0);
@@ -199,7 +215,7 @@ class ScrollZoomHandler {
         e.preventDefault();
     }
 
-    _onTimeout(initialEvent: any) {
+    _onTimeout(initialEvent: MouseEvent) {
         this._type = 'wheel';
         this._delta -= this._lastValue;
         if (!this._active) {
@@ -207,7 +223,7 @@ class ScrollZoomHandler {
         }
     }
 
-    _start(e: any) {
+    _start(e: MouseEvent) {
         if (!this._delta) return;
 
         if (this._frameId) {
@@ -275,7 +291,6 @@ class ScrollZoomHandler {
         let finished = false;
         let zoom;
         if (this._type === 'wheel' && startZoom && easing) {
-            assert(easing && typeof startZoom === 'number');
 
             const t = Math.min((browser.now() - this._lastWheelEventTime) / 200, 1);
             const k = easing(t);

@@ -1,9 +1,8 @@
 import isBuiltin from 'is-builtin-module';
 import * as rollup from 'rollup';
 import rollupConfig from '../../rollup.config.style-spec';
-import styleSpecPackage from '../../src/style-spec/package.json';
-import * as spec from '../../dist/style-spec/index.cjs';
-
+import styleSpecPackage from '../../src/style-spec/package.json' assert {type: 'json'};
+import spec from '../../dist/style-spec/index.cjs';
 /* eslint-disable import/namespace */
 import {RollupOptions} from 'rollup';
 
@@ -15,10 +14,18 @@ describe('@maplibre/maplibre-gl-style-spec npm package', () => {
             plugins: [{
                 name: 'test-checker',
                 resolveId: (id, importer) => {
+
+                    // linux (path starts with slash or dot)
+                    const slashOrDot: boolean = /^[\/\.]/.test(id);
+
+                    // Windows (path could start with drive letter: for example c:\)
+                    const windowsFullPath: boolean = /^[c-zC-Z]:\\/.test(id);
+
                     if (
-                        /^[\/\.]/.test(id) ||
+                        slashOrDot ||
+                        windowsFullPath ||
                         isBuiltin(id) ||
-                        /node_modules/.test(importer)
+                        /node_modules/.test(importer!)
                     ) {
                         return null;
                     }
@@ -26,6 +33,7 @@ describe('@maplibre/maplibre-gl-style-spec npm package', () => {
                     expect(styleSpecPackage.dependencies[id]).toBeTruthy();
                     return false;
                 }
+                //@ts-ignore
             }, ...(rollupConfig as RollupOptions[])[0].plugins]
         }).then(() => {
         }).catch(e => {

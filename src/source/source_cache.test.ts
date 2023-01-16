@@ -336,7 +336,7 @@ describe('SourceCache#removeTile', () => {
         sourceCache._addTile(tileID);
     });
 
-    test('fires dataabort event', done => {
+    test('fires dataabort event', async () => {
         const sourceCache = createSourceCache({
             loadTile() {
                 // Do not call back in order to make sure the tile is removed before it is loaded.
@@ -344,13 +344,12 @@ describe('SourceCache#removeTile', () => {
         });
         const tileID = new OverscaledTileID(0, 0, 0, 0, 0);
         const tile = sourceCache._addTile(tileID);
-        sourceCache.once('dataabort', event => {
-            expect(event.dataType).toBe('source');
-            expect(event.tile).toBe(tile);
-            expect(event.coord).toBe(tileID);
-            done();
-        });
+        const abortPromise = sourceCache.once('dataabort');
         sourceCache._removeTile(tileID.key);
+        const event = await abortPromise;
+        expect(event.dataType).toBe('source');
+        expect(event.tile).toBe(tile);
+        expect(event.coord).toBe(tileID);
     });
 
     test('does not fire dataabort event when the tile has already been loaded', () => {
@@ -485,7 +484,7 @@ describe('SourceCache / Source lifecycle', () => {
         transform.resize(511, 511);
         transform.zoom = 0;
 
-        const expected = [ new OverscaledTileID(0, 0, 0, 0, 0).key, new OverscaledTileID(0, 0, 0, 0, 0).key ];
+        const expected = [new OverscaledTileID(0, 0, 0, 0, 0).key, new OverscaledTileID(0, 0, 0, 0, 0).key];
         expect.assertions(expected.length);
 
         const sourceCache = createSourceCache({
@@ -1054,9 +1053,9 @@ describe('SourceCache#_updateRetainedTiles', () => {
 
         expect(retained).toEqual({
             // parent of ideal tile 0/0/0
-            '000' : new OverscaledTileID(0, 0, 0, 0, 0),
+            '000': new OverscaledTileID(0, 0, 0, 0, 0),
             // ideal tile id 1/0/1
-            '211' : new OverscaledTileID(1, 0, 1, 0, 1)
+            '211': new OverscaledTileID(1, 0, 1, 0, 1)
         });
 
         addTileSpy.mockClear();
@@ -1069,7 +1068,7 @@ describe('SourceCache#_updateRetainedTiles', () => {
         expect(getTileSpy).not.toHaveBeenCalled();
         expect(retainedLoaded).toEqual({
             // only ideal tile retained
-            '211' : new OverscaledTileID(1, 0, 1, 0, 1)
+            '211': new OverscaledTileID(1, 0, 1, 0, 1)
         });
     });
 
@@ -1119,9 +1118,9 @@ describe('SourceCache#_updateRetainedTiles', () => {
         expect(retained).toEqual({
             // parent of ideal tile (0, 0, 0) (only partially covered by loaded child
             // tiles, so we still need to load the parent)
-            '000' : new OverscaledTileID(0, 0, 0, 0, 0),
+            '000': new OverscaledTileID(0, 0, 0, 0, 0),
             // ideal tile id (1, 0, 0)
-            '011' : new OverscaledTileID(1, 0, 1, 0, 0),
+            '011': new OverscaledTileID(1, 0, 1, 0, 0),
             // loaded child tile (2, 0, 0)
             '022': new OverscaledTileID(2, 0, 2, 0, 0)
         });
@@ -1134,9 +1133,9 @@ describe('SourceCache#_updateRetainedTiles', () => {
         expect(retained).toEqual({
             // parent of ideal tile (0, 0, 0) (only partially covered by loaded child
             // tiles, so we still need to load the parent)
-            '000' : new OverscaledTileID(0, 0, 0, 0, 0),
+            '000': new OverscaledTileID(0, 0, 0, 0, 0),
             // ideal tile id (1, 0, 0)
-            '011' : new OverscaledTileID(1, 0, 1, 0, 0)
+            '011': new OverscaledTileID(1, 0, 1, 0, 0)
         });
 
     });
@@ -1163,7 +1162,7 @@ describe('SourceCache#_updateRetainedTiles', () => {
 
         expect(retained).toEqual({
             // ideal tile id (2, 0, 0)
-            '022' : new OverscaledTileID(2, 0, 2, 0, 0)
+            '022': new OverscaledTileID(2, 0, 2, 0, 0)
         });
 
     });
@@ -1191,7 +1190,7 @@ describe('SourceCache#_updateRetainedTiles', () => {
 
         expect(retained).toEqual({
             // ideal tile id (2, 0, 0)
-            '022' : new OverscaledTileID(2, 0, 2, 0, 0)
+            '022': new OverscaledTileID(2, 0, 2, 0, 0)
         });
 
     });
@@ -1352,7 +1351,7 @@ describe('SourceCache#tilesIn', () => {
                 expect(tiles[0].tile.tileID.key).toBe('011');
                 expect(tiles[0].tile.tileSize).toBe(512);
                 expect(tiles[0].scale).toBe(1);
-                expect(round(tiles[0].queryGeometry)).toEqual([{x: 4096, y: 4050}, {x:12288, y: 8146}]);
+                expect(round(tiles[0].queryGeometry)).toEqual([{x: 4096, y: 4050}, {x: 12288, y: 8146}]);
 
                 expect(tiles[1].tile.tileID.key).toBe('111');
                 expect(tiles[1].tile.tileSize).toBe(512);
@@ -1404,7 +1403,7 @@ describe('SourceCache#tilesIn', () => {
                 expect(tiles[0].tile.tileID.key).toBe('012');
                 expect(tiles[0].tile.tileSize).toBe(1024);
                 expect(tiles[0].scale).toBe(1);
-                expect(round(tiles[0].queryGeometry)).toEqual([{x: 4096, y: 4050}, {x:12288, y: 8146}]);
+                expect(round(tiles[0].queryGeometry)).toEqual([{x: 4096, y: 4050}, {x: 12288, y: 8146}]);
 
                 expect(tiles[1].tile.tileID.key).toBe('112');
                 expect(tiles[1].tile.tileSize).toBe(1024);

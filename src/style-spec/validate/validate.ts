@@ -21,6 +21,8 @@ import validateTerrain from './validate_terrain';
 import validateString from './validate_string';
 import validateFormatted from './validate_formatted';
 import validateImage from './validate_image';
+import validatePadding from './validate_padding';
+import validateSprite from './validate_sprite';
 
 const VALIDATORS = {
     '*'() {
@@ -41,7 +43,9 @@ const VALIDATORS = {
     'terrain': validateTerrain,
     'string': validateString,
     'formatted': validateFormatted,
-    'resolvedImage': validateImage
+    'resolvedImage': validateImage,
+    'padding': validatePadding,
+    'sprite': validateSprite,
 };
 
 // Main recursive validation function. Tracks:
@@ -58,6 +62,7 @@ export default function validate(options) {
     const value = options.value;
     const valueSpec = options.valueSpec;
     const styleSpec = options.styleSpec;
+    options.validateSpec = validate;
 
     if (valueSpec.expression && isFunction(unbundle(value))) {
         return validateFunction(options);

@@ -47,7 +47,7 @@ describe('ImageSource', () => {
     };
 
     test('constructor', () => {
-        const source = createSource({url : '/image.png'});
+        const source = createSource({url: '/image.png'});
 
         expect(source.minzoom).toBe(0);
         expect(source.maxzoom).toBe(22);
@@ -55,7 +55,7 @@ describe('ImageSource', () => {
     });
 
     test('fires dataloading event', () => {
-        const source = createSource({url : '/image.png'});
+        const source = createSource({url: '/image.png'});
         source.on('dataloading', (e) => {
             expect(e.dataType).toBe('source');
         });
@@ -65,7 +65,7 @@ describe('ImageSource', () => {
     });
 
     test('transforms url request', () => {
-        const source = createSource({url : '/image.png'});
+        const source = createSource({url: '/image.png'});
         const map = new StubMap() as any;
         const spy = jest.spyOn(map._requestManager, 'transformRequest');
         source.onAdd(map);
@@ -76,7 +76,7 @@ describe('ImageSource', () => {
     });
 
     test('updates url from updateImage', () => {
-        const source = createSource({url : '/image.png'});
+        const source = createSource({url: '/image.png'});
         const map = new StubMap() as any;
         const spy = jest.spyOn(map._requestManager, 'transformRequest');
         source.onAdd(map);
@@ -92,7 +92,7 @@ describe('ImageSource', () => {
     });
 
     test('sets coordinates', () => {
-        const source = createSource({url : '/image.png'});
+        const source = createSource({url: '/image.png'});
         const map = new StubMap() as any;
         source.onAdd(map);
         respond();
@@ -104,7 +104,7 @@ describe('ImageSource', () => {
     });
 
     test('sets coordinates via updateImage', () => {
-        const source = createSource({url : '/image.png'});
+        const source = createSource({url: '/image.png'});
         const map = new StubMap() as any;
         source.onAdd(map);
         respond();
@@ -120,7 +120,7 @@ describe('ImageSource', () => {
     });
 
     test('fires data event when content is loaded', done => {
-        const source = createSource({url : '/image.png'});
+        const source = createSource({url: '/image.png'});
         source.on('data', (e) => {
             if (e.dataType === 'source' && e.sourceDataType === 'content') {
                 expect(typeof source.tileID == 'object').toBeTruthy();
@@ -132,7 +132,7 @@ describe('ImageSource', () => {
     });
 
     test('fires data event when metadata is loaded', done => {
-        const source = createSource({url : '/image.png'});
+        const source = createSource({url: '/image.png'});
         source.on('data', (e) => {
             if (e.dataType === 'source' && e.sourceDataType === 'metadata') {
                 done();
@@ -149,5 +149,31 @@ describe('ImageSource', () => {
         expect(serialized.type).toBe('image');
         expect(serialized.url).toBe('/image.png');
         expect(serialized.coordinates).toEqual([[0, 0], [1, 0], [1, 1], [0, 1]]);
+    });
+
+    test('allows using updateImage before initial image is loaded', () => {
+        const source = createSource({url: '/image.png'});
+        const map = new StubMap() as any;
+
+        source.onAdd(map);
+
+        requests.shift();
+        expect(source.image).toBeUndefined();
+        source.updateImage({url: '/image2.png'});
+        respond();
+        expect(source.image).toBeTruthy();
+    });
+
+    test('cancels request if updateImage is used', () => {
+        const source = createSource({url: '/image.png'});
+        const map = new StubMap() as any;
+
+        source.onAdd(map);
+
+        const request = requests.shift() as any;
+        const spy = jest.spyOn(request, 'abort');
+
+        source.updateImage({url: '/image2.png'});
+        expect(spy).toHaveBeenCalled();
     });
 });

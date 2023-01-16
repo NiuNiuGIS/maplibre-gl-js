@@ -67,7 +67,9 @@ function validSchema(k, v, obj, ref, version, kind) {
         'property-type',
         'formatted',
         'resolvedImage',
-        'promoteId'
+        'promoteId',
+        'padding',
+        'sprite'
     ]);
     const keys = [
         'default',

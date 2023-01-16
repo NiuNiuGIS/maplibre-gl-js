@@ -1,6 +1,6 @@
 import {createPropertyExpression, Feature, GlobalProperties, StylePropertyExpression} from '../expression';
 import definitions from './definitions';
-import v8 from '../reference/v8.json';
+import v8 from '../reference/v8.json' assert {type: 'json'};
 import {StylePropertySpecification} from '../style-spec';
 import ParsingError from './parsing_error';
 
@@ -40,7 +40,7 @@ describe('createPropertyExpression', () => {
 
 describe('evaluate expression', () => {
     test('warns and falls back to default for invalid enum values', () => {
-        const {value} = createPropertyExpression([ 'get', 'x' ], {
+        const {value} = createPropertyExpression(['get', 'x'], {
             type: 'enum',
             values: {a: {}, b: {}, c: {}},
             default: 'a',

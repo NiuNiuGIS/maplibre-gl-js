@@ -1,12 +1,11 @@
 import fs from 'fs';
 import reference from '../../src/style-spec/reference/latest';
-import packageJson from '../../package.json';
+import packageJson from '../../package.json' assert {type: 'json'};
 
 const minBundle = fs.readFileSync('dist/maplibre-gl.js', 'utf8');
 
 describe('test min build', () => {
     test('production build removes asserts', () => {
-        expect(minBundle.includes('canary assert')).toBeFalsy();
         expect(minBundle.includes('canary debug run')).toBeFalsy();
     });
 
