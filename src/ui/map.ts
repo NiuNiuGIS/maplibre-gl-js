@@ -2,8 +2,12 @@ import {extend, bindAll, warnOnce, uniqueId, isImageBitmap} from '../util/util';
 import browser from '../util/browser';
 import DOM from '../util/dom';
 import packageJSON from '../../package.json' assert {type: 'json'};
-import {getImage, GetImageCallback, getJSON, ResourceType} from '../util/ajax';
-import {RequestManager} from '../util/request_manager';
+
+import {getJSON} from '../util/ajax';
+import ImageRequest from '../util/image_request';
+import type {GetImageCallback} from '../util/image_request';
+
+import {RequestManager, ResourceType} from '../util/request_manager';
 import Style, {StyleSwapOptions} from '../style/style';
 import EvaluationParameters from '../style/evaluation_parameters';
 import Painter from '../render/painter';
@@ -23,7 +27,6 @@ import {MapEventType, MapLayerEventType, MapMouseEvent, MapSourceDataEvent, MapS
 import TaskQueue from '../util/task_queue';
 import webpSupported from '../util/webp_supported';
 import {PerformanceMarkers, PerformanceUtils} from '../util/performance';
-import {setCacheLimits} from '../util/tile_request_cache';
 import {Source} from '../source/source';
 import StyleLayer from '../style/style_layer';
 
@@ -33,7 +36,7 @@ import type {LngLatBoundsLike} from '../geo/lng_lat_bounds';
 import type {FeatureIdentifier, StyleOptions, StyleSetterOptions} from '../style/style';
 import type {MapEvent, MapDataEvent} from './events';
 import type {CustomLayerInterface} from '../style/style_layer/custom_style_layer';
-import type {StyleImageInterface, StyleImageMetadata} from '../style/style_image';
+import type {StyleImage, StyleImageInterface, StyleImageMetadata} from '../style/style_image';
 import type {PointLike} from './camera';
 import type ScrollZoomHandler from './handler/scroll_zoom';
 import type BoxZoomHandler from './handler/box_zoom';
@@ -54,7 +57,8 @@ import type {
     LightSpecification,
     SourceSpecification,
     TerrainSpecification
-} from '../style-spec/types.g';
+} from '@maplibre/maplibre-gl-style-spec';
+
 import {Callback} from '../types/callback';
 import type {ControlPosition, IControl} from './control/control';
 import type {MapGeoJSONFeature} from '../util/vectortile_to_geojson';
@@ -235,7 +239,7 @@ const defaultOptions = {
  * @param {boolean} [options.doubleClickZoom=true] If `true`, the "double click to zoom" interaction is enabled (see {@link DoubleClickZoomHandler}).
  * @param {boolean|Object} [options.touchZoomRotate=true] If `true`, the "pinch to rotate and zoom" interaction is enabled. An `Object` value is passed as options to {@link TwoFingersTouchZoomRotateHandler#enable}.
  * @param {boolean|Object} [options.touchPitch=true] If `true`, the "drag to pitch" interaction is enabled. An `Object` value is passed as options to {@link TwoFingersTouchPitchHandler#enable}.
- * @param {boolean|GestureOptions} [options.cooperativeGestures=undefined] If `true` or set to an options object, map is only accessible on desktop while holding Command/Ctrl and only accessible on mobile with two fingers. Interacting with the map using normal gestures will trigger an informational screen. With this option enabled, "drag to pitch" requires a three-finger gesture.
+ * @param {boolean|GestureOptions} [options.cooperativeGestures=undefined] If `true` or set to an options object, map is only accessible on desktop while holding Command/Ctrl and only accessible on mobile with two fingers. Interacting with the map using normal gestures will trigger an informational screen. With this option enabled, "drag to pitch" requires a three-finger gesture. Cooperative gestures are disabled when a map enters fullscreen using {@link #FullscreenControl}.
  * A valid options object includes the following properties to customize the text on the informational screen. The values below are the defaults.
  * {
  *   windowsHelpText: "Use Ctrl + scroll to zoom the map",
@@ -298,7 +302,7 @@ class Map extends Camera {
     _interactive: boolean;
     _cooperativeGestures: boolean | GestureOptions;
     _cooperativeGesturesScreen: HTMLElement;
-    _metaPress: boolean;
+    _metaKey: keyof MouseEvent;
     _showTileBoundaries: boolean;
     _showCollisionBoxes: boolean;
     _showPadding: boolean;
@@ -311,10 +315,12 @@ class Map extends Camera {
     _styleDirty: boolean;
     _sourcesDirty: boolean;
     _placementDirty: boolean;
+    _imageQueueDirty: boolean;
     _loaded: boolean;
     // accounts for placement finishing as well
     _fullyLoaded: boolean;
     _trackResize: boolean;
+    _resizeObserver: ResizeObserver;
     _preserveDrawingBuffer: boolean;
     _failIfMajorPerformanceCaveat: boolean;
     _antialias: boolean;
@@ -335,6 +341,9 @@ class Map extends Camera {
     _clickTolerance: number;
     _pixelRatio: number;
     _terrainDataCallback: (e: MapStyleDataEvent | MapSourceDataEvent) => void;
+
+    /** image queue throttling handle. To be used later when clean up */
+    _imageQueueHandle: number;
 
     /**
      * The map's {@link ScrollZoomHandler}, which implements zooming in and out with a scroll wheel or trackpad.
@@ -411,6 +420,7 @@ class Map extends Camera {
 
         this._interactive = options.interactive;
         this._cooperativeGestures = options.cooperativeGestures;
+        this._metaKey = navigator.platform.indexOf('Mac') === 0 ? 'metaKey' : 'ctrlKey';
         this._maxTileCacheSize = options.maxTileCacheSize;
         this._failIfMajorPerformanceCaveat = options.failIfMajorPerformanceCaveat;
         this._preserveDrawingBuffer = options.preserveDrawingBuffer;
@@ -428,6 +438,8 @@ class Map extends Camera {
         this._locale = extend({}, defaultLocale, options.locale);
         this._clickTolerance = options.clickTolerance;
         this._pixelRatio = options.pixelRatio ?? devicePixelRatio;
+
+        this._imageQueueHandle = ImageRequest.addThrottleControl(() => this.isMoving());
 
         this._requestManager = new RequestManager(options.transformRequest);
 
@@ -448,8 +460,8 @@ class Map extends Camera {
 
         bindAll([
             '_onWindowOnline',
-            '_onWindowResize',
             '_onMapScroll',
+            '_cooperativeGesturesOnWheel',
             '_contextLost',
             '_contextRestored'
         ], this);
@@ -467,8 +479,12 @@ class Map extends Camera {
 
         if (typeof window !== 'undefined') {
             addEventListener('online', this._onWindowOnline, false);
-            addEventListener('resize', this._onWindowResize, false);
-            addEventListener('orientationchange', this._onWindowResize, false);
+            this._resizeObserver = new ResizeObserver((entries) => {
+                if (this._trackResize) {
+                    this.resize(entries)._update();
+                }
+            });
+            this._resizeObserver.observe(this._container);
         }
 
         this.handlers = new HandlerManager(this, options as CompleteMapOptions);
@@ -906,6 +922,32 @@ class Map extends Camera {
     }
 
     /**
+     * Gets the map's cooperativeGestures option
+     *
+     * @returns {GestureOptions} gestureOptions
+     */
+    getCooperativeGestures() {
+        return this._cooperativeGestures;
+    }
+
+    /**
+     * Sets or clears the map's cooperativeGestures option
+     *
+     * @param {GestureOptions | null | undefined} gestureOptions If `true` or set to an options object, map is only accessible on desktop while holding Command/Ctrl and only accessible on mobile with two fingers. Interacting with the map using normal gestures will trigger an informational screen. With this option enabled, "drag to pitch" requires a three-finger gesture.
+     * @returns {Map} `this`
+     */
+    setCooperativeGestures(gestureOptions?: GestureOptions | boolean | null) {
+        this._cooperativeGestures = gestureOptions;
+        if (this._cooperativeGestures) {
+            this._setupCooperativeGestures();
+        } else {
+            this._destroyCooperativeGestures();
+        }
+
+        return this;
+    }
+
+    /**
      * Returns a [Point](https://github.com/mapbox/point-geometry) representing pixel coordinates, relative to the map's `container`,
      * that correspond to the specified geographical location.
      *
@@ -942,7 +984,7 @@ class Map extends Camera {
      * var isMoving = map.isMoving();
      */
     isMoving(): boolean {
-        return this._moving || this.handlers.isMoving();
+        return this._moving || this.handlers?.isMoving();
     }
 
     /**
@@ -952,7 +994,7 @@ class Map extends Camera {
      * var isZooming = map.isZooming();
      */
     isZooming(): boolean {
-        return this._zooming || this.handlers.isZooming();
+        return this._zooming || this.handlers?.isZooming();
     }
 
     /**
@@ -962,7 +1004,7 @@ class Map extends Camera {
      * map.isRotating();
      */
     isRotating(): boolean {
-        return this._rotating || this.handlers.isRotating();
+        return this._rotating || this.handlers?.isRotating();
     }
 
     _createDelegatedListener(type: MapEvent | string, layerId: string, listener: Listener): {
@@ -1488,7 +1530,9 @@ class Map extends Camera {
         const previousStyle = this.style && options.transformStyle ? this.style.serialize() : undefined;
         if (this.style) {
             this.style.setEventedParent(null);
-            this.style._remove();
+
+            // Only release workers when map is getting disposed
+            this.style._remove(!style);
         }
 
         if (!style) {
@@ -1895,6 +1939,22 @@ class Map extends Camera {
     }
 
     /**
+     * Returns an image, specified by ID, currently available in the map.
+     * This includes both images from the style's original sprite
+     * and any images that have been added at runtime using {@link Map#addImage}.
+     *
+     * @param id The ID of the image.
+     * @returns {StyleImage} An image in the map with the specified ID.
+     *
+     * @example
+     * var coffeeShopIcon = map.getImage("coffee_cup");
+     *
+     */
+    getImage(id: string): StyleImage {
+        return this.style.getImage(id);
+    }
+
+    /**
      * Check whether or not an image with a specific ID exists in the style. This checks both images
      * in the style's original sprite and any images
      * that have been added at runtime using {@link Map#addImage}.
@@ -1950,7 +2010,7 @@ class Map extends Camera {
      * @see [Add an icon to the map](https://maplibre.org/maplibre-gl-js-docs/example/add-image/)
      */
     loadImage(url: string, callback: GetImageCallback) {
-        getImage(this._requestManager.transformRequest(url, ResourceType.Image), callback);
+        ImageRequest.getImage(this._requestManager.transformRequest(url, ResourceType.Image), callback);
     }
 
     /**
@@ -2588,33 +2648,33 @@ class Map extends Camera {
         this._container.addEventListener('scroll', this._onMapScroll, false);
     }
 
+    _cooperativeGesturesOnWheel(event: WheelEvent) {
+        this._onCooperativeGesture(event, event[this._metaKey], 1);
+    }
+
     _setupCooperativeGestures() {
         const container = this._container;
-        this._metaPress = false;
         this._cooperativeGesturesScreen = DOM.create('div', 'maplibregl-cooperative-gesture-screen', container);
-        let modifierKeyName = 'Control';
         let desktopMessage = typeof this._cooperativeGestures !== 'boolean' && this._cooperativeGestures.windowsHelpText ? this._cooperativeGestures.windowsHelpText : 'Use Ctrl + scroll to zoom the map';
         if (navigator.platform.indexOf('Mac') === 0) {
             desktopMessage = typeof this._cooperativeGestures !== 'boolean' && this._cooperativeGestures.macHelpText ? this._cooperativeGestures.macHelpText : 'Use ⌘ + scroll to zoom the map';
-            modifierKeyName = 'Meta';
         }
         const mobileMessage = typeof this._cooperativeGestures !== 'boolean' && this._cooperativeGestures.mobileHelpText ? this._cooperativeGestures.mobileHelpText : 'Use two fingers to move the map';
         this._cooperativeGesturesScreen.innerHTML = `
             <div class="maplibregl-desktop-message">${desktopMessage}</div>
             <div class="maplibregl-mobile-message">${mobileMessage}</div>
         `;
-        document.addEventListener('keydown', (event) => {
-            if (event.key === modifierKeyName) this._metaPress = true;
-        });
-        document.addEventListener('keyup', (event) => {
-            if (event.key === modifierKeyName) this._metaPress = false;
-        });
         // Add event to canvas container since gesture container is pointer-events: none
-        this._canvasContainer.addEventListener('wheel', (e) => {
-            this._onCooperativeGesture(e, this._metaPress, 1);
-        }, false);
-        // Remove the traditional pan classes
-        this._canvasContainer.classList.remove('maplibregl-touch-drag-pan');
+        this._canvasContainer.addEventListener('wheel', this._cooperativeGesturesOnWheel, false);
+
+        // Add a cooperative gestures class (enable touch-action: pan-x pan-y;)
+        this._canvasContainer.classList.add('maplibregl-cooperative-gestures');
+    }
+
+    _destroyCooperativeGestures() {
+        DOM.remove(this._cooperativeGesturesScreen);
+        this._canvasContainer.removeEventListener('wheel', this._cooperativeGesturesOnWheel, false);
+        this._canvasContainer.classList.remove('maplibregl-cooperative-gestures');
     }
 
     _resizeCanvas(width: number, height: number, pixelRatio: number) {
@@ -2812,6 +2872,8 @@ class Map extends Camera {
         if (this.terrain) this.terrain.sourceCache.update(this.transform, this.terrain);
         this.transform.updateElevation(this.terrain);
 
+        this._imageQueueDirty = ImageRequest.processQueue() > 0;
+
         this._placementDirty = this.style && this.style._updatePlacement(this.painter.transform, this.showCollisionBoxes, this._fadeDuration, this._crossSourceCollisions);
 
         // Actually draw
@@ -2877,7 +2939,7 @@ class Map extends Camera {
         // Even though `_styleDirty` and `_sourcesDirty` are reset in this
         // method, synchronous events fired during Style#update or
         // Style#_updateSources could have caused them to be set again.
-        const somethingDirty = this._sourcesDirty || this._styleDirty || this._placementDirty;
+        const somethingDirty = this._sourcesDirty || this._styleDirty || this._placementDirty || this._imageQueueDirty;
         if (somethingDirty || this._repaint) {
             this.triggerRepaint();
         } else if (!this.isMoving() && this.loaded()) {
@@ -2935,11 +2997,12 @@ class Map extends Camera {
         delete this.handlers;
         this.setStyle(null);
         if (typeof window !== 'undefined') {
-            removeEventListener('resize', this._onWindowResize, false);
-            removeEventListener('orientationchange', this._onWindowResize, false);
             removeEventListener('online', this._onWindowOnline, false);
         }
 
+        ImageRequest.removeThrottleControl(this._imageQueueHandle);
+
+        this._resizeObserver?.disconnect();
         const extension = this.painter.context.gl.getExtension('WEBGL_lose_context');
         if (extension) extension.loseContext();
         this._canvas.removeEventListener('webglcontextrestored', this._contextRestored, false);
@@ -2947,7 +3010,7 @@ class Map extends Camera {
         DOM.remove(this._canvasContainer);
         DOM.remove(this._controlContainer);
         if (this._cooperativeGestures) {
-            DOM.remove(this._cooperativeGesturesScreen);
+            this._destroyCooperativeGestures();
         }
         this._container.classList.remove('maplibregl-map');
 
@@ -2978,12 +3041,6 @@ class Map extends Camera {
 
     _onWindowOnline() {
         this._update();
-    }
-
-    _onWindowResize(event: Event) {
-        if (this._trackResize) {
-            this.resize({originalEvent: event})._update();
-        }
     }
 
     /**
@@ -3087,11 +3144,6 @@ class Map extends Camera {
     // show vertices
     get vertices(): boolean { return !!this._vertices; }
     set vertices(value: boolean) { this._vertices = value; this._update(); }
-
-    // for cache browser tests
-    _setCacheLimits(limit: number, checkThreshold: number) {
-        setCacheLimits(limit, checkThreshold);
-    }
 
     /**
      * Returns the package version of the library

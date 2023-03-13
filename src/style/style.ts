@@ -8,7 +8,8 @@ import Light from './light';
 import LineAtlas from '../render/line_atlas';
 import {pick, clone, extend, deepEqual, filterObject, mapObject} from '../util/util';
 import {coerceSpriteToArray} from '../util/style';
-import {getJSON, getReferrer, makeRequest, ResourceType} from '../util/ajax';
+import {getJSON, getReferrer, makeRequest} from '../util/ajax';
+import {ResourceType} from '../util/request_manager';
 import browser from '../util/browser';
 import Dispatcher from '../util/dispatcher';
 import {validateStyle, emitValidationErrors as _emitValidationErrors} from './validate_style';
@@ -17,11 +18,8 @@ import type {SourceClass} from '../source/source';
 import {queryRenderedFeatures, queryRenderedSymbols, querySourceFeatures} from '../source/query_features';
 import SourceCache from '../source/source_cache';
 import GeoJSONSource from '../source/geojson_source';
-import styleSpec from '../style-spec/reference/latest';
+import {latest as styleSpec, derefLayers as deref, emptyStyle, diff as diffStyles, operations as diffOperations} from '@maplibre/maplibre-gl-style-spec';
 import getWorkerPool from '../util/global_worker_pool';
-import deref from '../style-spec/deref';
-import emptyStyle from '../style-spec/empty';
-import diffStyles, {operations as diffOperations} from '../style-spec/diff';
 import {
     registerForPluginStateChange,
     evented as rtlTextPluginEvented,
@@ -58,7 +56,7 @@ import type {
     LightSpecification,
     SourceSpecification,
     SpriteSpecification,
-} from '../style-spec/types.g';
+} from '@maplibre/maplibre-gl-style-spec';
 import type {CustomLayerInterface} from './style_layer/custom_style_layer';
 import type {Validator} from './validate_style';
 import type {OverscaledTileID} from '../source/tile_id';
@@ -199,7 +197,7 @@ class Style extends Evented {
         super();
 
         this.map = map;
-        this.dispatcher = new Dispatcher(getWorkerPool(), this);
+        this.dispatcher = new Dispatcher(getWorkerPool(), this, map._getMapId());
         this.imageManager = new ImageManager();
         this.imageManager.setEventedParent(this);
         this.glyphManager = new GlyphManager(map._requestManager, options.localIdeographFontFamily);
@@ -318,8 +316,11 @@ class Style extends Evented {
 
         const layers = deref(this.stylesheet.layers);
 
-        this._order = layers.map((layer) => layer.id);
+        // Broadcast layers to workers first, so that expensive style processing (createStyleLayer)
+        // can happen in parallel on both main and worker threads.
+        this.dispatcher.broadcast('setLayers', layers);
 
+        this._order = layers.map((layer) => layer.id);
         this._layers = {};
         this._serializedLayers = {};
         for (let layer of layers) {
@@ -328,7 +329,6 @@ class Style extends Evented {
             this._layers[layer.id] = layer;
             this._serializedLayers[layer.id] = layer.serialize();
         }
-        this.dispatcher.broadcast('setLayers', this._serializeLayers(this._order));
 
         this.light = new Light(this.stylesheet.light);
 
@@ -1341,7 +1341,7 @@ class Style extends Evented {
         }, props)));
     }
 
-    _remove() {
+    _remove(mapRemoved: boolean = true) {
         if (this._request) {
             this._request.cancel();
             this._request = null;
@@ -1362,7 +1362,7 @@ class Style extends Evented {
         }
         this.imageManager.setEventedParent(null);
         this.setEventedParent(null);
-        this.dispatcher.remove();
+        this.dispatcher.remove(mapRemoved);
     }
 
     _clearSource(id: string) {
@@ -1601,9 +1601,9 @@ class Style extends Evented {
      *
      * @param {SpriteSpecification} sprite new sprite value
      * @param {StyleSetterOptions} [options] style setter options
-     * @param completion completion handler
+     * @param [completion] completion handler
      */
-    setSprite(sprite: SpriteSpecification, options: StyleSetterOptions = {}, completion: (err: Error) => void) {
+    setSprite(sprite: SpriteSpecification, options: StyleSetterOptions = {}, completion?: (err: Error) => void) {
         this._checkLoaded();
 
         if (sprite && this._validate(validateStyle.sprite, 'sprite', sprite, null, options)) {
@@ -1616,7 +1616,9 @@ class Style extends Evented {
             this._loadSprite(sprite, true, completion);
         } else {
             this._unloadSprite();
-            completion(null);
+            if (completion) {
+                completion(null);
+            }
         }
     }
 }

@@ -1,16 +1,17 @@
-import {getVideo, ResourceType} from '../util/ajax';
+import {getVideo} from '../util/ajax';
+import {ResourceType} from '../util/request_manager';
 
 import ImageSource from './image_source';
 import rasterBoundsAttributes from '../data/raster_bounds_attributes';
 import SegmentVector from '../data/segment';
 import Texture from '../render/texture';
 import {ErrorEvent} from '../util/evented';
-import ValidationError from '../style-spec/error/validation_error';
+import {ValidationError} from '@maplibre/maplibre-gl-style-spec';
 
 import type Map from '../ui/map';
 import type Dispatcher from '../util/dispatcher';
 import type {Evented} from '../util/evented';
-import type {VideoSourceSpecification} from '../style-spec/types.g';
+import type {VideoSourceSpecification} from '@maplibre/maplibre-gl-style-spec';
 
 /**
  * A data source containing video.

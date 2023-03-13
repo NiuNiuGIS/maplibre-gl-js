@@ -1,5 +1,6 @@
 import geolocation from 'mock-geolocation';
-import {createMap, setWebGlContext, setPerformance, setMatchMedia} from '../../util/test/util';
+import LngLatBounds from '../../geo/lng_lat_bounds';
+import {createMap, beforeMapTest} from '../../util/test/util';
 import GeolocateControl from './geolocate_control';
 
 geolocation.use();
@@ -14,9 +15,7 @@ function lngLatAsFixed(lngLat, digits) {
 }
 
 beforeEach(() => {
-    setWebGlContext();
-    setPerformance();
-    setMatchMedia();
+    beforeMapTest();
     map = createMap(undefined, undefined);
 });
 
@@ -176,12 +175,14 @@ describe('GeolocateControl with no options', () => {
         geolocate._geolocateButton.dispatchEvent(click);
         geolocation.send({latitude: 10, longitude: 20, accuracy: 1000});
         await moveEndPromise;
-        expect(lngLatAsFixed(map.getCenter(), 4)).toEqual({'lat': '10.0000', 'lng': '20.0000'});
+        const mapCenter = map.getCenter();
+        expect(lngLatAsFixed(mapCenter, 4)).toEqual({'lat': '10.0000', 'lng': '20.0000'});
 
         const mapBounds = map.getBounds();
 
         // map bounds should contain or equal accuracy bounds, that is the ensure accuracy bounds doesn't fall outside the map bounds
-        const accuracyBounds = map.getCenter().toBounds(1000);
+        const accuracyBounds = LngLatBounds.fromLngLat(mapCenter, 1000);
+
         expect(accuracyBounds.getNorth().toFixed(4) <= mapBounds.getNorth().toFixed(4)).toBeTruthy();
         expect(accuracyBounds.getSouth().toFixed(4) >= mapBounds.getSouth().toFixed(4)).toBeTruthy();
         expect(accuracyBounds.getEast().toFixed(4) <= mapBounds.getEast().toFixed(4)).toBeTruthy();
@@ -189,7 +190,8 @@ describe('GeolocateControl with no options', () => {
 
         // map bounds should not be too much bigger on all edges of the accuracy bounds (this test will only work for an orthogonal bearing),
         // ensures map bounds does not contain buffered accuracy bounds, as if it does there is too much gap around the accuracy bounds
-        const bufferedAccuracyBounds = map.getCenter().toBounds(1100);
+        const bufferedAccuracyBounds = LngLatBounds.fromLngLat(mapCenter, 1100);
+
         expect(
             (bufferedAccuracyBounds.getNorth().toFixed(4) < mapBounds.getNorth().toFixed(4)) &&
             (bufferedAccuracyBounds.getSouth().toFixed(4) > mapBounds.getSouth().toFixed(4)) &&

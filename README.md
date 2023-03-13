@@ -8,9 +8,6 @@ It originated as an open-source fork of [mapbox-gl-js](https://github.com/mapbox
 
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg?style=flat)](LICENSE.txt)[![Version](https://img.shields.io/npm/v/maplibre-gl?style=flat)](https://www.npmjs.com/package/maplibre-gl)[![CI](https://github.com/maplibre/maplibre-gl-js/actions/workflows/ci.yml/badge.svg)](https://github.com/maplibre/maplibre-gl-js/actions/workflows/ci.yml)[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat)](https://opensource.org/licenses/BSD-3-Clause)
 
-**Call for Bounties💰** If you have ideas for new features in MapLibre, you can now nominate them for the MapLibre Bounty Program at https://maplibre.org/news/2022-10-16-call-for-bounties/
-<br />
-
 ## Getting Started
 
 Include the JavaScript and CSS files in the `<head>` of your HTML file.
@@ -46,9 +43,9 @@ Check out the features through [examples](https://maplibre.org/maplibre-gl-js-do
 
 | Showcases |      |
 | ---- | ---- |
-|![Display a map](https://maplibre.org/maplibre-gl-js-docs/assets/simple-map-800-22a3f5b6410f543ab214e14f68fb42ec.png)	|![Third party vector tile source](https://maplibre.org/maplibre-gl-js-docs/assets/third-party-800-e047007bba338f6ec7d6cd47abfed279.png)	|
-|![Animate a series of images](https://maplibre.org/maplibre-gl-js-docs/assets/animate-images-800-497358611dbe047f300faeb9465aad5f.png)	|![Create a heatmap layer](https://maplibre.org/maplibre-gl-js-docs/assets/heatmap-layer-800-05c0f97ddb6b1a10e84b5064564e86ff.png)	|
-|![3D buildings](https://maplibre.org/maplibre-gl-js-docs/assets/3d-buildings-800-bd7885f07050dbbfee7a9bb800ff5ce8.png)	|![Visualize population density](https://maplibre.org/maplibre-gl-js-docs/assets/visualize-population-density-800-6c65712d9ea94eb6d2bd3348a82b9bdf.png)	|
+|![Display a map](https://maplibre.org/maplibre-gl-js-docs/assets/simple-map-800-1427cd84c8c693ead996f81b06e467bb.png)	|![Third party vector tile source](https://maplibre.org/maplibre-gl-js-docs/assets/third-party-800-72a3092888152ba26920ec0ba5aeacd0.png)	|
+|![Animate a series of images](https://maplibre.org/maplibre-gl-js-docs/assets/animate-images-800-522ec4f83d7988b2d6f23a0c1d5eb924.png)	|![Create a heatmap layer](https://maplibre.org/maplibre-gl-js-docs/assets/heatmap-layer-800-a23e44d9c1238315f191187c5c628719.png)	|
+|![3D buildings](https://maplibre.org/maplibre-gl-js-docs/assets/3d-buildings-800-18cda57800c107d1dee5f269bf7a12f2.png)	|![Visualize population density](https://maplibre.org/maplibre-gl-js-docs/assets/visualize-population-density-800-dc0290780f7b2842031bdf1b9347981a.png)	|
 
 <br />
 

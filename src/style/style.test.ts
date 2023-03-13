@@ -5,6 +5,7 @@ import Transform from '../geo/transform';
 import {extend} from '../util/util';
 import {RequestManager} from '../util/request_manager';
 import {Event, Evented} from '../util/evented';
+import {RGBAImage} from '../util/image';
 import {
     setRTLTextPlugin,
     clearRTLTextPlugin,
@@ -15,7 +16,7 @@ import {OverscaledTileID} from '../source/tile_id';
 import {fakeXhr, fakeServer} from 'nise';
 import {WorkerGlobalScopeInterface} from '../util/web_worker';
 import EvaluationParameters from './evaluation_parameters';
-import {LayerSpecification, GeoJSONSourceSpecification, FilterSpecification, SourceSpecification} from '../style-spec/types.g';
+import {LayerSpecification, GeoJSONSourceSpecification, FilterSpecification, SourceSpecification} from '@maplibre/maplibre-gl-style-spec';
 import {SourceClass} from '../source/source';
 import GeoJSONSource from '../source/geojson_source';
 
@@ -129,7 +130,7 @@ describe('Style', () => {
             done();
         });
         sinonFakeServer.respond();
-        new Style(createStyleJSON());
+        new Style(getStubMap());
     });
 });
 
@@ -248,6 +249,60 @@ describe('Style#loadJSON', () => {
                 expect(e.target).toBe(style);
                 expect(e.dataType).toBe('style');
                 done();
+            });
+
+            respond();
+        });
+    });
+
+    test('Validate sprite image extraction', done => {
+        // Stubbing to bypass Web APIs that supported by jsdom:
+        // * `URL.createObjectURL` in ajax.getImage (https://github.com/tmpvar/jsdom/issues/1721)
+        // * `canvas.getContext('2d')` in browser.getImageData
+        jest.spyOn(browser, 'getImageData');
+        // stub Image so we can invoke 'onload'
+        // https://github.com/jsdom/jsdom/commit/58a7028d0d5b6aacc5b435daee9fd8f9eacbb14c
+
+        // fake the image request (sinon doesn't allow non-string data for
+        // server.respondWith, so we do so manually)
+        const requests = [];
+        sinonFakeXMLServer.onCreate = req => { requests.push(req); };
+        const respond = () => {
+            let req = requests.find(req => req.url === 'http://example.com/sprite.png');
+            req.setStatus(200);
+            req.response = new ArrayBuffer(8);
+            req.onload();
+
+            req = requests.find(req => req.url === 'http://example.com/sprite.json');
+            req.setStatus(200);
+            req.response = '{"image1": {"width": 1, "height": 1, "x": 0, "y": 0, "pixelRatio": 1.0}}';
+            req.onload();
+        };
+
+        const style = new Style(getStubMap());
+
+        style.loadJSON({
+            'version': 8,
+            'sources': {},
+            'layers': [],
+            'sprite': 'http://example.com/sprite'
+        });
+
+        style.once('data', (e) => {
+            expect(e.target).toBe(style);
+            expect(e.dataType).toBe('style');
+
+            style.once('data', (e) => {
+                expect(e.target).toBe(style);
+                expect(e.dataType).toBe('style');
+                style.imageManager.getImages(['image1'], (error, response) => {
+                    const image = response['image1'];
+                    expect(image.data).toBeInstanceOf(RGBAImage);
+                    expect(image.data.width).toBe(1);
+                    expect(image.data.height).toBe(1);
+                    expect(image.pixelRatio).toBe(1);
+                    done();
+                });
             });
 
             respond();
@@ -471,6 +526,58 @@ describe('Style#_load', () => {
         style._load(nextStyleSpec, {}, prevStyleSpec);
 
         expect(_loadSpriteSpyOn).not.toHaveBeenCalled();
+    });
+
+    test('layers are broadcasted to worker', () => {
+        const style = new Style(getStubMap());
+        let dispatchType;
+        let dispatchData;
+        const styleSpec = createStyleJSON({
+            layers: [{
+                id: 'background',
+                type: 'background'
+            }]
+        });
+
+        const _broadcastSpyOn = jest.spyOn(style.dispatcher, 'broadcast')
+            .mockImplementation((type: string, data) => {
+                dispatchType = type;
+                dispatchData = data;
+            });
+
+        style._load(styleSpec, {});
+
+        expect(_broadcastSpyOn).toHaveBeenCalled();
+        expect(dispatchType).toBe('setLayers');
+
+        expect(dispatchData).toHaveLength(1);
+        expect(dispatchData[0].id).toBe('background');
+
+        // cleanup
+        _broadcastSpyOn.mockReset();
+    });
+
+    test('validate style when validate option is true', () => {
+        const style = new Style(getStubMap());
+        const styleSpec = createStyleJSON({
+            layers: [{
+                id: 'background',
+                type: 'background'
+            }, {
+                id: 'custom',
+                type: 'custom'
+            }]
+        });
+        const stub = jest.spyOn(console, 'error');
+
+        style._load(styleSpec, {validate: true});
+
+        // 1. layers[1]: missing required property "source"
+        // 2. layers[1].type: expected one of [fill, line, symbol, circle, heatmap, fill-extrusion, raster, hillshade, background], "custom" found
+        expect(stub).toHaveBeenCalledTimes(2);
+
+        // cleanup
+        stub.mockReset();
     });
 });
 
